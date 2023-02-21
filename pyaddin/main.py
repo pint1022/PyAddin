@@ -49,7 +49,7 @@ class PyAddin:
             name (str) : the name of add-in to update (without the suffix ``.xlam``).
             quiet (bool): perform the process in the background if True.
         '''
-        filename = os.path.join(os.getcwd(), f'{name}.xlam')
+        filename = os.path.join(os.getcwd(), name, f'{name}.xlam')
         addin = Addin(xlam_file=filename, visible=not quiet)
 
         try:
