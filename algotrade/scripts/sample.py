@@ -10,6 +10,7 @@ import numpy as np
 import yfinance as yf
 # from openpyxl import Workbook
 import sys
+import pandas as pd
 
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
@@ -21,6 +22,20 @@ import tensorflow as tf
 from .myUtils import *
 from .myInds import *
 from .Transformer_model import *
+
+core = ["TSLA", "GOOG", "ENPH", "NVDA","MRNA","AAPL"]
+energy = ["GUSH", "CF", "EQT","OXY","SEDG"]
+semi = ["QCOM","LRCX","ASML","AMD","SOXL","TSM"]
+index = ["SPY","QQQ","SQQQ","TQQQ"]
+fin = ["BLK","BX","TLT"]
+hot = ["SHOP","FSLY","U","ZM","nflx","pypl"]
+btc = ["COIN","BTC-USD","MSTR","ETH-USD"]
+software = ["ADBE","MSFT"]
+base = ["COST","HD","KO","MCD","PFE","UNH"]
+bio = ["XBI","amgn"]
+cloud = ["OKTA","DDOG","DASH","NOW"]
+random = ["NKX","DOG","SE","IBM"]
+tickers = core + index 
 
 # return lastPrice
 # other data:lastTradeDate, strike, lastPrice, bid, ask  change  percentChange  volume  openInterest  impliedVolatility, inTheMoney contractSize currency  
@@ -150,7 +165,7 @@ def get_predictions(ticker, mean_k=5, seq_len=32, current_date=datetime.now()):
                         end = end_date, 
                         interval='1d').fillna(0)
     # print(df.columns)
-    current_price = df[-1:]['Close']    
+    # current_price = df[-1:]['Close']    
     df.columns = df.columns.str.lower()
 
     X_pred, max_return, min_return = predict_data(ticker=ticker, df=df, mean_k=mean_k, seq_len=seq_len)
@@ -163,23 +178,65 @@ def get_predictions(ticker, mean_k=5, seq_len=32, current_date=datetime.now()):
                                                        'MultiAttention': MultiAttention,
                                                        'TransformerEncoder': TransformerEncoder})
     _pred = model.predict(X_pred)  
-    return  current_price, _pred[-1:]*(max_return -min_return) + min_return
+    return  _pred[-1:]*(max_return -min_return) + min_return
 
 def update_predictions(sheet): 
     currentRow = 2 # Start at row 2
-    dateCol = 'G'
-    preCLoseCol = 'E'
-    predictCLose = 'F'
-    actCLose = 'H'
+    label = 'close'
     flagCol='D'
-    flag = sheet.Range(flagCol + str(currentRow)).Value
-    check_date = sheet.Range(dateCol + str(currentRow)).Value
+    runtimeCol = 'E'
+    dateCol = 'F'
+    preCLoseCol = 'G'
+    predictCLoseCol = 'H'
+    actCLose = 'I'
+    delta = 'J'
+    currPred = 'K'
+    prevPred = 'L'
+    oneDayClose = 'M'
+    indCol = 'O'
 
-    if (flag=='act'): #read the real close price, if the date is not before today, return 
-        if check_date.strftime('%Y-%m-%d') > datetime.now().strftime('%Y-%m-%d'):
-            return
-    currentDate = check_date
+    check_date = datetime.now()
+    days = 1
+    # check_date = sheet.Range(dateCol + str(currentRow)).Value
+    # if check_date is None:
+    #     check_date = datetime.now().strftime('%Y-%m-%d')
+    # else:
+    #     check_date = check_date + timedelta(days=days)
+    #     if (check_date.weekday() >= 5):
+    #         return
+
+    predDate = check_date + timedelta(days=days)
+    if (predDate.weekday() == 5):
+        predDate = check_date + timedelta(days=2)
+    elif (predDate.weekday() == 6):
+        predDate = check_date + timedelta(days=3)
+
+
+
+    currentDate = check_date.strftime('%Y-%m-%d')
+    sheet.Range(actCLose + '1').Value = f'{currentDate} close'
+    sheet.Range(oneDayClose + '1').Value = sheet.Range(preCLoseCol + '1').Value
+    sheet.Range(prevPred + '1').Value = sheet.Range(currPred + '1').Value 
+    sheet.Range(preCLoseCol + '1').Value = f'{currentDate} close'
+    sheet.Range(currPred + '1').Value = f'{currentDate} predict'
+    sheet.Range(delta + '1').Value = f'{currentDate} predict-close'
+    sheet.Range(indCol + '1').Value = 'Indicator'
+
+    # need check if it is not weekend or holiday
+    # while preDate.weekday() >= 5:
+    #     days += 1
+    #     predDate = datetime.today() + timedelta(days=days)
+
+    predDate = predDate.strftime('%Y-%m-%d')
+    sheet.Range(predictCLoseCol + '1').Value = f'{predDate} predict'
+
     while (sheet.Range("A" + str(currentRow)).Value != ""):
+        flag = sheet.Range(flagCol + str(currentRow)).Value
+
+        # if (flag=='act'): #read the real close price, if the date is not before today, return 
+        #     if check_date.strftime('%Y-%m-%d') > datetime.now().strftime('%Y-%m-%d'):
+        #         return
+        currentDate = check_date
         ticker = sheet.Range("A" + str(currentRow)).Value
         ticker.upper()
         act_price= get_price(ticker)
@@ -188,9 +245,132 @@ def update_predictions(sheet):
         else:
             seq_len = sheet.Range("B" + str(currentRow)).Value
             mean_k = sheet.Range("C" + str(currentRow)).Value
-            prev_price, pred_price =  get_predictions(ticker=ticker, mean_k=mean_k, seq_len=seq_len, current_date=currentDate)
-            sheet.Range(preCLoseCol + str(currentRow)).Value = prev_price
-            sheet.Range(predictCLose + str(currentRow)).Value = pred_price
+            ts = time.time()
+            pred_price =  get_predictions(ticker=ticker, mean_k=mean_k, seq_len=seq_len, current_date=currentDate)
+            sheet.Range(runtimeCol + str(currentRow)).Value = (time.time() - ts) * 1000
+            sheet.Range(prevPred + str(currentRow)).Value = sheet.Range(currPred + str(currentRow)).Value
+            sheet.Range(currPred + str(currentRow)).Value = sheet.Range(predictCLoseCol + str(currentRow)).Value
+            sheet.Range(oneDayClose + str(currentRow)).Value = sheet.Range(preCLoseCol + str(currentRow)).Value
+            sheet.Range(preCLoseCol + str(currentRow)).Value = act_price
+            sheet.Range(predictCLoseCol + str(currentRow)).Value = act_price * (pred_price + 1)
+            if pred_price > 0.0:
+                sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
+            else:
+                sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
+        sheet.Range(dateCol + str(currentRow)).Value = currentDate.strftime('%Y-%m-%d')
+
+        currentRow = currentRow + 1
+
+# def get_predictions_2(ticker, mean_k=5, seq_len=32, current_date=datetime.now(), delta=0):
+#     end_date = current_date.strftime('%Y-%m-%d')
+#     start_date = '1970-01-01'
+#     df = yf.download(ticker, 
+#                         start = start_date, 
+#                         end = end_date, 
+#                         interval='1d').fillna(0)
+#     # print(df.columns)
+#     # current_price = df[-1:]['Close']    
+#     df.columns = df.columns.str.lower()
+
+#     X_pred, max_return, min_return = predict_data(ticker=ticker, df=df, mean_k=mean_k, seq_len=seq_len)
+
+#     # chkpnt_file = f'{model_dir}/{ticker}_seq{int(seq_len)}_m{int(mean_k)}_Transformer+TimeEmbedding.hdf5'        
+#     # chkpnt_file = os.path.join(model_dir, f'models\{ticker}_seq{int(seq_len)}_m{int(mean_k)}_Transformer+TimeEmbedding.hdf5')        
+#     # model = tf.keras.models.load_model(chkpnt_file,
+#     #                                    custom_objects={'Time2Vector': Time2Vector, 
+#     #                                                    'SingleAttention': SingleAttention,
+#     #                                                    'MultiAttention': MultiAttention,
+#     #                                                    'TransformerEncoder': TransformerEncoder})
+#     # _pred = model.predict(X_pred)  
+#     return  delta * (max_return -min_return) + min_return
+
+def update_predictions_2(sheet): 
+    colnames=["index", "ticker", "seq_len", "mean_k","flag","runtime","last date","close","delta_c", "delta_o","delta_h","delta_l","delta_v","opt"]
+    pred_file = os.path.join(os.getcwd(), 'models\predictions\predictions.csv') 
+
+    data = np.array(pd.read_csv(pred_file, header=None, names=colnames))
+    predcol = 7
+    count = len(data)
+    print(count)
+
+    currentRow = 2 # Start at row 2
+    label = 'close'
+    flagCol='D'
+    runtimeCol = 'E'
+    dateCol = 'F'
+    preCLoseCol = 'G'
+    predictCLoseCol = 'H'
+    actCLose = 'I'
+    delta = 'J'
+    currPred = 'K'
+    prevPred = 'L'
+    oneDayClose = 'M'
+    indCol = 'O'
+
+    check_date = datetime.now()
+    days = 1
+    # check_date = sheet.Range(dateCol + str(currentRow)).Value
+    # if check_date is None:
+    #     check_date = datetime.now().strftime('%Y-%m-%d')
+    # else:
+    #     check_date = check_date + timedelta(days=days)
+    #     if (check_date.weekday() >= 5):
+    #         return
+
+    predDate = check_date + timedelta(days=days)
+    if (predDate.weekday() == 5):
+        predDate = check_date + timedelta(days=2)
+    elif (predDate.weekday() == 6):
+        predDate = check_date + timedelta(days=3)
+
+
+
+    currentDate = check_date.strftime('%Y-%m-%d')
+    sheet.Range(actCLose + '1').Value = f'{currentDate} close'
+    sheet.Range(oneDayClose + '1').Value = sheet.Range(preCLoseCol + '1').Value
+    sheet.Range(prevPred + '1').Value = sheet.Range(currPred + '1').Value 
+    sheet.Range(preCLoseCol + '1').Value = f'{currentDate} close'
+    sheet.Range(currPred + '1').Value = f'{currentDate} predict'
+    sheet.Range(delta + '1').Value = f'{currentDate} predict-close'
+
+    # need check if it is not weekend or holiday
+    # while preDate.weekday() >= 5:
+    #     days += 1
+    #     predDate = datetime.today() + timedelta(days=days)
+
+    predDate = predDate.strftime('%Y-%m-%d')
+    sheet.Range(predictCLoseCol + '1').Value = f'{predDate} predict'
+    for row in range(len(data)):
+        if data[row][5] == 0:
+            continue
+        sheet.Range('A' + str(currentRow)).Value  = data[row][0]
+        sheet.Range('B' + str(currentRow)).Value  = data[row][1]
+        sheet.Range('C' + str(currentRow)).Value  = data[row][2]
+        sheet.Range('D' + str(currentRow)).Value  = data[row][3]
+
+        # if (flag=='act'): #read the real close price, if the date is not before today, return 
+        #     if check_date.strftime('%Y-%m-%d') > datetime.now().strftime('%Y-%m-%d'):
+        #         return
+        currentDate = check_date
+        ticker = data[row][0]
+        ticker.upper()
+        act_price= get_price(ticker)
+
+        seq_len = data[row][1]
+        mean_k = data[row][2]
+        # pred_price =  get_predictions_2(ticker=ticker, mean_k=mean_k, seq_len=seq_len, current_date=currentDate, delta=data[row][predcol])
+        pred_price =  data[row][predcol]
+
+        sheet.Range(runtimeCol + str(currentRow)).Value = data[row][4]
+        sheet.Range(prevPred + str(currentRow)).Value = sheet.Range(currPred + str(currentRow)).Value
+        sheet.Range(currPred + str(currentRow)).Value = sheet.Range(predictCLoseCol + str(currentRow)).Value
+        sheet.Range(oneDayClose + str(currentRow)).Value = sheet.Range(preCLoseCol + str(currentRow)).Value
+        sheet.Range(preCLoseCol + str(currentRow)).Value = act_price
+        if pred_price > 0.0:
+            sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
+        else:
+            sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value - 1        
+        sheet.Range(predictCLoseCol + str(currentRow)).Value = act_price * (pred_price + 1)
         sheet.Range(dateCol + str(currentRow)).Value = currentDate.strftime('%Y-%m-%d')
 
         currentRow = currentRow + 1
@@ -199,6 +379,45 @@ def predict():
     wb = context.get_caller()
     sheet = wb.Worksheets('predictions') 
     update_predictions(sheet)  
+
+def update_actual(sheet): 
+    currentRow = 2 # Start at row 2
+    label = 'close'
+    flagCol='D'
+    runtimeCol = 'E'
+    dateCol = 'F'
+    preCLoseCol = 'G'
+    predictCLoseCol = 'H'
+    actCLose = 'I'
+    delta = 'J'
+    currPred = 'K'
+    prevPred = 'L'
+    days = 1
+    currentDate = datetime.now().strftime('%Y-%m-%d')
+    sheet.Range(actCLose + '1').Value = f'{currentDate} current'
+    sheet.Range(delta + '1').Value = f'{currentDate} RT delta'
+    current = datetime.today() - timedelta(days=days)
+
+    while (sheet.Range("A" + str(currentRow)).Value != ""):
+        flag = sheet.Range(flagCol + str(currentRow)).Value
+        check_date = sheet.Range(dateCol + str(currentRow)).Value
+        # if check_date is None or check_date.strftime('%Y-%m-%d') < current.strftime('%Y-%m-%d'):
+        #     break
+        # if check_date.strftime('%Y-%m-%d') < current.strftime('%Y-%m-%d'):
+        #     break
+        ticker = sheet.Range("A" + str(currentRow)).Value
+        ticker.upper()
+        act_price= get_price(ticker)
+        sheet.Range(actCLose + str(currentRow)).Value = act_price
+        sheet.Range(delta + str(currentRow)).Value = act_price - sheet.Range(predictCLoseCol + str(currentRow)).Value
+        currentRow = currentRow + 1
+
+def actual():
+    wb = context.get_caller()
+    # sheet = wb.Worksheets('predictions') 
+    # update_actual(sheet)  
+    sheet = wb.Worksheets('predictions2') 
+    update_predictions_2(sheet)  
 
 def research(): 
     row = 2 # Start at row 2

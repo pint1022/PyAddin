@@ -10,16 +10,21 @@ Custom UI definition. Please refer to the links below for detail.
 			<tab id="PyAddinTab" label="PyAddin">
 				<group id="Options" label="Active items">
 					<!-- MODIFY YOUR RIBBON CONTROL HERE -->
-					<button id="HotItems" label="PYT_Update" 
-						imageMso="AppointmentColor3" size="large" 
-						onAction="CB_Sample_1" 
-						screentip="Monitor" 
-						supertip="New items: alert the good items to trade" />
-					<button id="UpdateHoldings" label="VB_Update" 
-						imageMso="AppointmentColor6" size="large" 
-						onAction="CB_Sample_2" 
-						screentip="Refresh" 
-						supertip="Update: update the prices in the current list." />
+					<button id="Holdings" label="Update_Holdings" 
+						imageMso="GroupPivotChartDataAccess" size="large" 
+						onAction="CB_Holdings" 
+						screentip="Holdings" 
+						supertip="Holdings: read price of the current holdings" />
+					<button id="Predict" label="Update_Predections" 
+						imageMso="PauseTimer" size="large" 
+						onAction="CB_Predict" 
+						screentip="Predict" 
+						supertip="Predict: predict the next close prices in the current list." />
+					<button id="Validate" label="Update_Actual" 
+						imageMso="ControlProperties" size="large" 
+						onAction="CB_Actual" 
+						screentip="Validate" 
+						supertip="Validate: read the today's close prices to compare with the prediction." />						
 				</group>
 
 				<group id="yourGroup2" label="Your Group 2">

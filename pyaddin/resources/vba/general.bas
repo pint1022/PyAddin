@@ -14,7 +14,11 @@ Private Declare PtrSafe Sub CopyMem Lib "kernel32" Alias "RtlMoveMemory" (Destin
 #Else
 Private Declare Sub CopyMem Lib "kernel32" Alias "RtlMoveMemory" (Destination As Any, Source As Any, ByVal Length As Long)
 #End if
-
+' #If VBA7 Then
+'     Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal ms As LongPtr)
+' #Else
+'     Private Declare Sub Sleep Lib "kernel32" (ByVal ms as Long)
+' #End If
 ' global parameters
 Public Const CFG_FILE = "main.cfg"
 Public Const PYTHON_MAIN = "main.py"
