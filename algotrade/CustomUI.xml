@@ -20,11 +20,16 @@ Custom UI definition. Please refer to the links below for detail.
 						onAction="CB_Predict" 
 						screentip="Predict" 
 						supertip="Predict: predict the next close prices in the current list." />
-					<button id="Validate" label="Update_Actual" 
+					<button id="Actual" label="Update_Actual" 
 						imageMso="ControlProperties" size="large" 
 						onAction="CB_Actual" 
 						screentip="Validate" 
-						supertip="Validate: read the today's close prices to compare with the prediction." />						
+						supertip="Actual close: read the today's close prices to compare with the prediction." />						
+					<button id="Trend" label="Update_Trend" 
+						imageMso="ControlProperties" size="large" 
+						onAction="CB_Trend" 
+						screentip="Trend" 
+						supertip="Trade: flag the tickers for 15m and 1D trend." />						
 				</group>
 
 				<group id="yourGroup2" label="Your Group 2">

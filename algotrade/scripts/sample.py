@@ -22,7 +22,8 @@ import tensorflow as tf
 from .myUtils import *
 from .myInds import *
 from .Transformer_model import *
-
+import requests
+import json
 core = ["TSLA", "GOOG", "ENPH", "NVDA","MRNA","AAPL"]
 energy = ["GUSH", "CF", "EQT","OXY","SEDG"]
 semi = ["QCOM","LRCX","ASML","AMD","SOXL","TSM"]
@@ -78,6 +79,7 @@ def get_option_data_by_strike(ticker, strike, expiration, label='lastPrice', fla
 
 def get_data(ticker, strike, expiration, label='lastPrice', flag='call'):
     tick= yf.Ticker(ticker)
+
     if (flag=='call'): # calls, date 'yyyy-m-d'
         options = tick.option_chain(expiration).calls
         current_price = options[options['strike']==float(strike)][label].tolist()[0]
@@ -88,10 +90,40 @@ def get_data(ticker, strike, expiration, label='lastPrice', flag='call'):
         current_price = tick.history(period='1d')['Close'][0]    
     return  current_price
 
+def get_data_alpaca(ticker, strike, expiration, label='lastPrice', flag='call'):
+    limit=1
+    headers = {
+        "accept": "application/json",
+        "APCA-API-KEY-ID": "PK8OJJ04XXF7LN77CFVK",
+        "APCA-API-SECRET-KEY": "7DFnlNg9Ke58YADcuMfd529LtUAnDsJyXNaZ07Uc"
+    }
+    current_price = 0
+    price_date = datetime.now().strftime('%Y-%m-%d')
+
+    if (flag=='call') or (flag=='put'): # calls, date 'yyyy-m-d'
+        # url1 = "https://paper-api.alpaca.markets/v2/options/contracts?underlying_symbols={ticker}&expiration_date={expiration}&type={op}&strike_price_gte={strike}&strike_price_lte={strike}&limit={limit}".format(ticker=ticker, expiration=expiration, op=flag, limit=limit, strike=strike)
+        # print(url)
+
+        url = "https://data.alpaca.markets/v1beta1/options/snapshots/{ticker}?feed=indicative&expiration_date={expiration}&type={op}&strike_price_gte={strike}&strike_price_lte={strike}&limit={limit}".format(ticker=ticker, expiration=expiration, op=flag, limit=limit, strike=strike)
+
+        contracts = requests.get(url, headers=headers).json()
+        # print(response.text)
+        # contracts=json.loads(response.text)
+        # current_price = contracts['snapshots'][0]['close_price']
+        # price_date = contracts['snapshots'][0]['close_price_date']
+        latest = list(contracts['snapshots'].keys())[0]
+        current_price = contracts['snapshots'][latest]['latestTrade']['p']
+        price_date = contracts['snapshots'][latest]['latestTrade']['t']
+    else:
+        tick= yf.Ticker(ticker)
+        current_price = tick.history(period='1d')['Close'][0]    
+    return  current_price, price_date
+    
 def get_price(ticker):
     tick= yf.Ticker(ticker)
     current_price = tick.history(period='1d')['Close'][0]    
     return  current_price
+
 
 def update_holding(sheet): 
     currentRow = 2 # Start at row 2
@@ -103,9 +135,18 @@ def update_holding(sheet):
         expiration = sheet.Range("C" + str(currentRow)).Value
         flag = sheet.Range("D" + str(currentRow)).Value
         Label = "lastPrice"
-        res =  get_data(ticker=ticker, strike=strike, expiration=expiration, flag=flag)
-        sheet.Range("E" + str(currentRow)).Value = res
+        # res =  get_data(ticker=ticker, strike=strike, expiration=expiration, flag=flag)
+        price, price_date =  get_data_alpaca(ticker=ticker.upper(), strike=strike, expiration=expiration, flag=flag)
+        sheet.Range("E" + str(currentRow)).Value = price
+        sheet.Range("F" + str(currentRow)).Value = price_date
         currentRow = currentRow + 1
+
+
+
+def update():
+    wb = context.get_caller()
+    sheet = wb.Worksheets('Tickers')  
+    update_holding(sheet) 
 
 # model_dir='../'
 model_dir=os.path.abspath(os.getcwd())
@@ -256,7 +297,7 @@ def update_predictions(sheet):
             if pred_price > 0.0:
                 sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
             else:
-                sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
+                sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value - 1
         sheet.Range(dateCol + str(currentRow)).Value = currentDate.strftime('%Y-%m-%d')
 
         currentRow = currentRow + 1
@@ -366,10 +407,11 @@ def update_predictions_2(sheet):
         sheet.Range(currPred + str(currentRow)).Value = sheet.Range(predictCLoseCol + str(currentRow)).Value
         sheet.Range(oneDayClose + str(currentRow)).Value = sheet.Range(preCLoseCol + str(currentRow)).Value
         sheet.Range(preCLoseCol + str(currentRow)).Value = act_price
-        if pred_price > 0.0:
-            sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
-        else:
-            sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value - 1        
+        # if pred_price > 0.0:
+        #     sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value + 1
+        # else:
+        #     sheet.Range(indCol + str(currentRow)).Value = sheet.Range(indCol + str(currentRow)).Value - 1        
+        sheet.Range(indCol + str(currentRow)).Value = pred_price
         sheet.Range(predictCLoseCol + str(currentRow)).Value = act_price * (pred_price + 1)
         sheet.Range(dateCol + str(currentRow)).Value = currentDate.strftime('%Y-%m-%d')
 
@@ -490,11 +532,66 @@ def update_candidates():
         res =  get_price(ticker=ticker)
         sheet.Cells(row+1,col).Value = res
         col = col + 1
+    
+def trend(ticker, entries, exits, tf):
+    buy = entries[entries]
+    sell = exits[exits]
+    delta = int(tf[:-1])
+    interval = tf[-1]
+    end_date = datetime.now(timezone.utc)
+    if (interval == 'm'):
+        start_date = end_date - timedelta(minutes=delta)
+    elif (interval == 'h'):
+        start_date = end_date - timedelta(hours=delta)
+    else:
+        start_date = end_date - timedelta(days=delta)
 
+    if ((len(buy)> 0) and (buy.tail(1).index.item() > start_date) ):
+        return 1
+    elif ((len(sell)> 0) and sell.tail(1).index.item() > start_date):
+        return -1
+    else:
+        return 0
 
-def update():
+def get_trend(ticker, tf='15m', days=5, stratName = 'obv'):
+    ticker = ticker.upper()
+    if (tf[-1] == 'd'):
+        trading_days = max(50, days)
+    else:
+        trading_days = days
+        
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=trading_days)
+
+#     start_date = datetime(2022, 3, 1) # Adjust as needed
+#     end_date = datetime(2023, 3, 17)   # Adjust as needed
+    pf, entries, exits = strategy_trends(ticker, startdate = start_date, enddate = end_date, tf = tf, flag_obv='close', flag_sig='open', straSE = stratName)
+    return trend(ticker, entries, exits, tf=tf)
+
+def update_trend():
     wb = context.get_caller()
-    sheet = wb.Worksheets('Tickers')  
-    update_holding(sheet)     
+    sheet = wb.Worksheets['trend']    
+    date_col = 2 
+    Int15m_col =2
+    Int15mCnt_col =3
+    Int1D_col =4
+    Int1DCnt_col =5
 
+    # row = 1
+    # col = date_rol
+    # today = datetime.now().strftime('%Y-%m-%d')
+    # sheet.Cells(1,col).Value = today
+    # row = 3
+    # while (sheet.Cells(row,col).Value != ""):
+    #     ticker = sheet.Cells(row,col).Value
+    #     res =  get_trend(ticker, tf='15m', days=5, stratName = 'obv')
+    #     if res == 1:
+    #         sheet.Cells(row, Int15m_col).Value = "Buy"
+    #     elif res == -1:
+    #         sheet.Cells(row, Int15m_col).Value = "Sell"
+    #    elif res == -1:
+    #         sheet.Cells(row, Int15m_col).Value = "Hold"
+
+    #     sheet.Cells(row, Int15mCnt_col).Value = sheet.Cells(row, Int15mCnt_col).Value + res
+    #     row = row + 1
    
